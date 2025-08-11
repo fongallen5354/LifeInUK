@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>MC Revision Quiz</title>
+<style>
+body { font-family: Arial, sans-serif; max-width: 600px; margin: auto; }
+#score { font-weight: bold; margin-bottom: 10px; }
+.option { padding: 8px; border: 1px solid #ccc; margin: 5px 0; cursor: pointer; }
+.correct { background-color: #c8e6c9; } /* Green */
+.wrong { background-color: #ffcdd2; } /* Red */
+button { padding: 10px 15px; margin-top: 10px; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="score">Score: 0/0</div>
+<h2 id="question"></h2>
+<div id="options"></div>
+<button id="checkBtn">Check</button>
+<button id="nextBtn" class="hidden">Next</button>
+<div id="result" class="hidden"></div>
+<button id="tryAgainBtn" class="hidden">Try Again</button>
+
+<script>
+// CSV Loader
+async function loadCSV(url) {
+    const res = await fetch(url);
+    const text = await res.text();
+    const rows = text.trim().split("\n").map(r => r.split(","));
+    rows.shift(); // Remove header row
+    return rows.map(row => {
+        let q = row[0];
+        let wrongs = row.slice(1,4);
+        let correct = row[4];
+        return { question: q, wrong: wrongs, correct: correct };
+    });
+}
+
+// Shuffle helper
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
+
+let quizSet = [];
+let currentQ = 0;
+let selectedOption = null;
+let score = 0;
+let total = 0;
+
+function updateScore() {
+    document.getElementById("score").textContent = `Score: ${score}/${total}`;
+}
+
+function showQuestion(index) {
+    const q = quizSet[index];
+    total = quizSet.length;
+    updateScore();
+    document.getElementById("question").textContent = `Q${index+1}: ${q.question}`;
+    const optionsDiv = document.getElementById("options");
+    optionsDiv.innerHTML = "";
+    q.options.forEach((opt) => {
+        const div = document.createElement("div");
+        div.textContent = opt.text;
+        div.className = "option";
+        div.onclick = () => {
+            selectedOption = opt;
+            document.querySelectorAll(".option").forEach(o => o.style.borderColor = "#ccc");
+            div.style.borderColor = "#000";
+        };
+        optionsDiv.appendChild(div);
+    });
+    document.getElementById("checkBtn").classList.remove("hidden");
+    document.getElementById("nextBtn").classList.add("hidden");
+}
+
+document.getElementById("checkBtn").onclick = () => {
+    if (!selectedOption) return alert("Please select an answer!");
+    const q = quizSet[currentQ];
+    document.querySelectorAll(".option").forEach(optDiv => {
+        if (optDiv.textContent === q.correct) {
+            optDiv.classList.add("correct");
+        }
+        if (optDiv.textContent === selectedOption.text && selectedOption.text !== q.correct) {
+            optDiv.classList.add("wrong");
+        }
+    });
+    if (selectedOption.text === q.correct) {
+        score++;
+        updateScore();
+    }
+    document.getElementById("checkBtn").classList.add("hidden");
+    document.getElementById("nextBtn").classList.remove("hidden");
+};
+
+document.getElementById("nextBtn").onclick = () => {
+    selectedOption = null;
+    document.querySelectorAll(".option").forEach(opt => opt.className = "option");
+    currentQ++;
+    if (currentQ >= quizSet.length) {
+        showResult();
+        return;
+    }
+    showQuestion(currentQ);
+};
+
+document.getElementById("tryAgainBtn").onclick = () => {
+    startQuiz();
+};
+
+function showResult() {
+    document.getElementById("question").classList.add("hidden");
+    document.getElementById("options").classList.add("hidden");
+    document.getElementById("checkBtn").classList.add("hidden");
+    document.getElementById("nextBtn").classList.add("hidden");
+    const resultDiv = document.getElementById("result");
+    resultDiv.textContent = `Quiz completed! Your score: ${score}/${total}`;
+    resultDiv.classList.remove("hidden");
+    document.getElementById("tryAgainBtn").classList.remove("hidden");
+}
+
+function startQuiz() {
+    loadCSV("questions.csv").then(data => {
+        quizSet = shuffle(data).slice(0, 10).map(q => {
+            let opts = q.wrong.map(w => ({ text: w, isCorrect: false }));
+            opts.push({ text: q.correct, isCorrect: true });
+            opts = shuffle(opts);
+            return { question: q.question, correct: q.correct, options: opts };
+        });
+        currentQ = 0;
+        score = 0;
+        selectedOption = null;
+        document.getElementById("result").classList.add("hidden");
+        document.getElementById("tryAgainBtn").classList.add("hidden");
+        document.getElementById("question").classList.remove("hidden");
+        document.getElementById("options").classList.remove("hidden");
+        showQuestion(0);
+    });
+}
+
+// Start quiz first time
+startQuiz();
+</script>
+</body>
+</html>
+
