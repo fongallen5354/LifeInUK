@@ -1,191 +1,124 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>MC Revision Quiz</title>
-<style>
-  body { font-family: Arial, sans-serif; max-width: 720px; margin: 32px auto; padding: 0 16px; }
-  #score { font-weight: bold; margin-bottom: 12px; }
-  #question { margin: 6px 0 12px; white-space: pre-wrap; }
-  .option { padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; margin: 8px 0; cursor: pointer; white-space: pre-wrap; }
-  .option:hover { border-color: #999; }
-  .correct { background-color: #c8e6c9; }
-  .wrong { background-color: #ffcdd2; }
-  button { padding: 10px 16px; margin-top: 12px; border-radius: 10px; border: 1px solid #bbb; background: #fff; cursor: pointer; }
-  button:disabled { opacity: 0.6; cursor: not-allowed; }
-  .hidden { display: none; }
-</style>
+  <meta charset="UTF-8">
+  <title>MC Revision Quiz</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .question { font-weight: bold; margin-top: 20px; }
+    .option-btn {
+      display: block;
+      margin: 5px 0;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: #f9f9f9;
+      cursor: pointer;
+      text-align: left;
+    }
+    .option-btn:hover { background: #e9e9e9; }
+    #result { font-weight: bold; margin-top: 20px; }
+    #try-again { margin-top: 10px; display: none; }
+  </style>
 </head>
 <body>
-  <div id="score">Score: 0/0</div>
-  <h2 id="question"></h2>
-  <div id="options"></div>
-  <button id="checkBtn">Check</button>
-  <button id="nextBtn" class="hidden">Next</button>
 
-  <div id="result" class="hidden" style="margin-top:18px; font-size:18px; font-weight:600;"></div>
-  <button id="tryAgainBtn" class="hidden">Try Again</button>
+<h2>MC Revision Quiz</h2>
+<p id="score">Score: 0/0</p>
+<div id="quiz-container"></div>
+<button id="check-btn">Check</button>
+<div id="result"></div>
+<button id="try-again">Try Again</button>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
 <script>
-function parseCSV(text) {
-  const rows = [];
-  let row = [], cur = '', inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { cur += '"'; i++; }
-        else { inQuotes = false; }
-      } else { cur += c; }
-    } else {
-      if (c === '"') { inQuotes = true; }
-      else if (c === ',') { row.push(cur); cur = ''; }
-      else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
-      else if (c !== '\r') { cur += c; }
-    }
-  }
-  if (cur.length > 0 || row.length > 0) { row.push(cur); rows.push(row); }
-  return rows;
-}
-
-async function loadCSV(url) {
-  const res = await fetch(url);
-  const text = await res.text();
-  const clean = text.replace(/^\uFEFF/, '').trim();
-  const raw = parseCSV(clean);
-  if (raw.length === 0) return [];
-
-  const header = raw.shift().map(h => h.trim().toLowerCase());
-  const idx = {
-    question: header.indexOf('question'),
-    a: header.indexOf('option a'),
-    b: header.indexOf('option b'),
-    c: header.indexOf('option c'),
-    d: header.indexOf('option d'),
-    correct: header.indexOf('correct answer')
-  };
-
-  const data = [];
-  for (const r of raw) {
-    const q = (r[idx.question] || '').trim();
-    if (!q) continue;
-    const wrongs = [];
-    ['a','b','c','d'].forEach(k => {
-      const pos = idx[k];
-      if (pos !== -1 && r[pos] != null && String(r[pos]).trim() !== '') {
-        wrongs.push(String(r[pos]).trim());
-      }
-    });
-    const correct = idx.correct !== -1 ? String(r[idx.correct] || '').trim() : '';
-    if (!correct) continue;
-    data.push({ question: q, wrong: wrongs, correct });
-  }
-  return data;
-}
-
-function shuffle(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-let quizSet = [];
-let currentQ = 0;
-let selectedOption = null;
+let questions = [];
+let currentQuestionIndex = 0;
 let score = 0;
-let total = 0;
+let selectedAnswer = null;
 
-const scoreEl   = document.getElementById('score');
-const qEl       = document.getElementById('question');
-const optsEl    = document.getElementById('options');
-const checkBtn  = document.getElementById('checkBtn');
-const nextBtn   = document.getElementById('nextBtn');
-const resultEl  = document.getElementById('result');
-const againBtn  = document.getElementById('tryAgainBtn');
-
-function updateScore() {
-  scoreEl.textContent = `Score: ${score}/${total}`;
-}
-
-function renderQuestion(index) {
-  const q = quizSet[index];
-  updateScore();
-  qEl.textContent = `Q${index + 1}: ${q.question}`;
-  optsEl.innerHTML = '';
-  selectedOption = null;
-  q.options.forEach(opt => {
-    const div = document.createElement('div');
-    div.className = 'option';
-    div.textContent = opt.text;
-    div.addEventListener('click', () => {
-      document.querySelectorAll('.option').forEach(o => o.style.borderColor = '#ccc');
-      div.style.borderColor = '#000';
-      selectedOption = opt;
-    });
-    optsEl.appendChild(div);
-  });
-}
-
-function checkAnswer() {
-  if (!selectedOption) return;
-  document.querySelectorAll('.option').forEach(o => o.classList.remove('correct', 'wrong'));
-  document.querySelectorAll('.option').forEach(o => {
-    if (o.textContent === quizSet[currentQ].correct) o.classList.add('correct');
-    else if (o.textContent === selectedOption.text && o.textContent !== quizSet[currentQ].correct) o.classList.add('wrong');
-  });
-  if (selectedOption.text === quizSet[currentQ].correct) score++;
-  currentQ++;
-  total++;
-  updateScore();
-  checkBtn.classList.add('hidden');
-  nextBtn.classList.remove('hidden');
-}
-
-function nextQuestion() {
-  if (currentQ >= quizSet.length) {
-    showResult();
-  } else {
-    renderQuestion(currentQ);
-    checkBtn.classList.remove('hidden');
-    nextBtn.classList.add('hidden');
+// Load CSV
+Papa.parse("questions.csv", {
+  download: true,
+  header: true,
+  complete: function(results) {
+    questions = shuffle(results.data).slice(0, 10); // pick 10 random
+    showQuestion();
   }
+});
+
+function showQuestion() {
+  document.getElementById("result").textContent = "";
+  selectedAnswer = null;
+  
+  let q = questions[currentQuestionIndex];
+  
+  // Collect options and shuffle them
+  let options = [q.Option1, q.Option2, q.Option3, q.Option4];
+  options = shuffle(options);
+  
+  // Render
+  let container = document.getElementById("quiz-container");
+  container.innerHTML = `<div class="question">Q${currentQuestionIndex+1}: ${q.Question}</div>`;
+  
+  options.forEach(option => {
+    let btn = document.createElement("button");
+    btn.textContent = option;
+    btn.className = "option-btn";
+    btn.onclick = () => {
+      selectedAnswer = option;
+      document.querySelectorAll(".option-btn").forEach(b => b.style.background = "#f9f9f9");
+      btn.style.background = "#d3d3d3";
+    };
+    container.appendChild(btn);
+  });
+  
+  document.getElementById("score").textContent = `Score: ${score}/${currentQuestionIndex}`;
 }
 
-function showResult() {
-  qEl.textContent = '';
-  optsEl.innerHTML = '';
-  checkBtn.classList.add('hidden');
-  nextBtn.classList.add('hidden');
-  resultEl.classList.remove('hidden');
-  againBtn.classList.remove('hidden');
-  resultEl.textContent = `Final Score: ${score}/${quizSet.length}`;
-}
+document.getElementById("check-btn").onclick = function() {
+  if (!selectedAnswer) {
+    alert("Please select an answer.");
+    return;
+  }
+  
+  let q = questions[currentQuestionIndex];
+  if (selectedAnswer === q.Correct) {
+    score++;
+    document.getElementById("result").textContent = "✅ Correct!";
+  } else {
+    document.getElementById("result").textContent = `❌ Wrong! Correct answer: ${q.Correct}`;
+  }
+  
+  currentQuestionIndex++;
+  
+  if (currentQuestionIndex < questions.length) {
+    setTimeout(showQuestion, 1000);
+  } else {
+    document.getElementById("quiz-container").innerHTML = "";
+    document.getElementById("result").textContent = `Final Score: ${score}/${questions.length}`;
+    document.getElementById("check-btn").style.display = "none";
+    document.getElementById("try-again").style.display = "block";
+  }
+};
 
-function tryAgain() {
+document.getElementById("try-again").onclick = function() {
   score = 0;
-  total = 0;
-  currentQ = 0;
-  resultEl.classList.add('hidden');
-  againBtn.classList.add('hidden');
-  renderQuestion(currentQ);
-  checkBtn.classList.remove('hidden');
+  currentQuestionIndex = 0;
+  document.getElementById("check-btn").style.display = "inline-block";
+  document.getElementById("try-again").style.display = "none";
+  questions = shuffle(questions).slice(0, 10);
+  showQuestion();
+};
+
+// Shuffle helper
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
 }
-
-checkBtn.addEventListener('click', checkAnswer);
-nextBtn.addEventListener('click', nextQuestion);
-againBtn.addEventListener('click', tryAgain);
-
-(async () => {
-  const data = await loadCSV('questions.csv'); // CSV must be in same folder
-  quizSet = shuffle(data.map(q => {
-    const options = shuffle([...q.wrong, q.correct]).map(t => ({ text: t }));
-    return { ...q, options };
-  }));
-  renderQuestion(currentQ);
-})();
 </script>
 </body>
 </html>
