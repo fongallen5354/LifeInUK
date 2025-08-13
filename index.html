@@ -1,168 +1,158 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Revision Quiz</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      line-height: 1.6;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    .question-container {
-      margin-bottom: 20px;
-      border: 1px solid #ccc;
-      padding: 15px;
-      border-radius: 5px;
-    }
-    .options label {
-      display: block;
-      margin-bottom: 10px;
-    }
-    .check-button {
-      padding: 5px 10px;
-      margin-top: 10px;
-      cursor: pointer;
-    }
-    .submit-all-button {
-        padding: 10px 20px;
-        font-size: 16px;
-        cursor: pointer;
-    }
-    #results {
-      margin-top: 20px;
-      font-weight: bold;
-    }
-    .correct-answer {
-      color: green;
-      font-weight: bold;
-    }
-    .incorrect-answer {
-      color: red;
-      font-weight: bold;
-    }
-    .correct-feedback {
-      background-color: #d4edda; /* Light green */
-    }
-    .incorrect-feedback {
-      background-color: #f8d7da; /* Light red */
-    }
-  </style>
+<meta charset="UTF-8">
+<title>MC Revision Quiz</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 720px; margin: 32px auto; padding: 0 16px; }
+  #score { font-weight: bold; margin-bottom: 12px; }
+  #question { margin: 6px 0 12px; }
+  .option { padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; margin: 8px 0; cursor: pointer; white-space: pre-wrap; }
+  .option:hover { border-color: #999; }
+  .correct { background-color: #c8e6c9; }
+  .wrong { background-color: #ffcdd2; }
+  button { padding: 10px 16px; margin-top: 12px; border-radius: 10px; border: 1px solid #bbb; background: #fff; cursor: pointer; }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .hidden { display: none; }
+</style>
 </head>
 <body>
+  <div id="score">Score: 0/0</div>
+  <h2 id="question"></h2>
+  <div id="options"></div>
+  <button id="checkBtn">Check</button>
+  <button id="nextBtn" class="hidden">Next</button>
 
-  <h1>Revision Quiz</h1>
+  <div id="result" class="hidden" style="margin-top:18px; font-size:18px; font-weight:600;"></div>
+  <button id="tryAgainBtn" class="hidden">Try Again</button>
 
-  <div id="quiz-container"></div>
+<script>
+/* ---- Robust CSV parser (handles quotes, commas, CRLF) ---- */
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cur = '', inQuotes = false;
 
-  <button id="submit-all-button" class="submit-all-button">Submit All Answers</button>
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
 
-  <div id="results"></div>
-
-  <script>
-    const quizContainer = document.getElementById('quiz-container');
-    const submitAllButton = document.getElementById('submit-all-button');
-    const resultsContainer = document.getElementById('results');
-
-    let questions = [];
-
-    async function loadQuiz() {
-      try {
-        const response = await fetch('questions.csv');
-        const text = await response.text();
-        const lines = text.split('\n').filter(line => line.trim() !== '');
-        questions = lines.slice(1).map(line => {
-          const [question, optionA, optionB, optionC, optionD, correctAnswer] = line.split(',');
-          return {
-            question: question.replace(/"/g, ''),
-            options: [optionA.replace(/"/g, ''), optionB.replace(/"/g, ''), optionC.replace(/"/g, ''), optionD.replace(/"/g, '')],
-            correctAnswer: correctAnswer.replace(/"/g, '')
-          };
-        });
-
-        displayQuestions();
-        submitAllButton.addEventListener('click', showTotalResults);
-
-      } catch (error) {
-        resultsContainer.innerHTML = 'Error loading the quiz: ' + error;
-      }
-    }
-
-    function displayQuestions() {
-      questions.forEach((q, index) => {
-        const questionElement = document.createElement('div');
-        questionElement.classList.add('question-container');
-        questionElement.dataset.questionIndex = index;
-        questionElement.innerHTML = `
-          <p><b>${q.question}</b></p>
-          <div class="options">
-            ${q.options.map((option, i) => `
-              <label>
-                <input type="radio" name="question${index}" value="${option}">
-                ${option}
-              </label>
-            `).join('')}
-          </div>
-          <button class="check-button" onclick="checkSingleAnswer(${index})">Check Answer</button>
-          <div class="feedback-message" id="feedback-message-${index}"></div>
-        `;
-        quizContainer.appendChild(questionElement);
-      });
-    }
-    
-    function checkSingleAnswer(questionIndex) {
-      const question = questions[questionIndex];
-      const selectedOption = document.querySelector(`input[name="question${questionIndex}"]:checked`);
-      const feedbackMessage = document.getElementById(`feedback-message-${questionIndex}`);
-      const questionContainer = document.querySelector(`.question-container[data-question-index="${questionIndex}"]`);
-
-      if (!selectedOption) {
-        feedbackMessage.innerHTML = 'Please select an answer.';
-        feedbackMessage.className = 'feedback-message incorrect-answer';
-        return;
-      }
-      
-      const isCorrect = (selectedOption.value.trim() === question.correctAnswer.trim());
-      
-      // Clear previous feedback classes
-      questionContainer.classList.remove('correct-feedback', 'incorrect-feedback');
-      
-      if (isCorrect) {
-        feedbackMessage.innerHTML = 'Correct!';
-        feedbackMessage.className = 'feedback-message correct-answer';
-        questionContainer.classList.add('correct-feedback');
-      } else {
-        feedbackMessage.innerHTML = 'Incorrect. The correct answer is: ' + question.correctAnswer;
-        feedbackMessage.className = 'feedback-message incorrect-answer';
-        questionContainer.classList.add('incorrect-feedback');
-      }
-      
-      // Disable options and check button after checking
-      document.querySelectorAll(`input[name="question${questionIndex}"]`).forEach(input => {
-          input.disabled = true;
-      });
-      document.querySelector(`.question-container[data-question-index="${questionIndex}"] .check-button`).disabled = true;
-    }
-
-    function showTotalResults() {
-      let score = 0;
-      let incorrectAnswers = [];
-
-      questions.forEach((q, index) => {
-        const selectedOption = document.querySelector(`input[name="question${index}"]:checked`);
-        const questionContainer = document.querySelector(`.question-container[data-question-index="${index}"]`);
-        
-        if (selectedOption && selectedOption.value.trim() === q.correctAnswer.trim()) {
-          score++;
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { // escaped quote
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
         }
-      });
-      
-      resultsContainer.innerHTML = `<h2>Your Total Score: ${score} out of ${questions.length}</h2>`;
+      } else {
+        cur += c;
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        row.push(cur);
+        cur = '';
+      } else if (c === '\n') {
+        row.push(cur);
+        rows.push(row);
+        row = [];
+        cur = '';
+      } else if (c === '\r') {
+        // ignore CR (handle CRLF)
+      } else {
+        cur += c;
+      }
     }
+  }
+  // last cell / last row
+  if (cur.length > 0 || row.length > 0) {
+    row.push(cur);
+    rows.push(row);
+  }
+  return rows;
+}
 
-    loadQuiz();
-  </script>
+/* ---- Load and normalize CSV according to headers ---- */
+async function loadCSV(url) {
+  const res = await fetch(url);
+  const text = await res.text();
 
-</body>
-</html>
+  // Remove BOM if present
+  const clean = text.replace(/^\uFEFF/, '').trim();
+  const raw = parseCSV(clean);
+
+  if (raw.length === 0) return [];
+
+  const header = raw.shift().map(h => h.trim().toLowerCase());
+  const idx = {
+    question: header.indexOf('question'),
+    a: header.indexOf('option a'),
+    b: header.indexOf('option b'),
+    c: header.indexOf('option c'),
+    d: header.indexOf('option d'),
+    correct: header.indexOf('correct answer')
+  };
+
+  const data = [];
+  for (const r of raw) {
+    const q = (r[idx.question] || '').trim();
+    if (!q) continue;
+
+    // Collect wrong options (support A–D; any missing ones are skipped)
+    const wrongs = [];
+    ['a','b','c','d'].forEach(k => {
+      const pos = idx[k];
+      if (pos !== -1 && r[pos] != null && String(r[pos]).trim() !== '') {
+        wrongs.push(String(r[pos]).trim());
+      }
+    });
+
+    const correct = idx.correct !== -1 ? String(r[idx.correct] || '').trim() : '';
+    if (!correct) continue;
+
+    data.push({ question: q, wrong: wrongs, correct });
+  }
+  return data;
+}
+
+/* ---- Fisher–Yates shuffle ---- */
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* ---- Quiz state ---- */
+let quizSet = [];
+let currentQ = 0;
+let selectedOption = null;
+let score = 0;
+let total = 0;
+
+const scoreEl   = document.getElementById('score');
+const qEl       = document.getElementById('question');
+const optsEl    = document.getElementById('options');
+const checkBtn  = document.getElementById('checkBtn');
+const nextBtn   = document.getElementById('nextBtn');
+const resultEl  = document.getElementById('result');
+const againBtn  = document.getElementById('tryAgainBtn');
+
+function updateScore() {
+  scoreEl.textContent = `Score: ${score}/${total}`;
+}
+
+function renderQuestion(index) {
+  const q = quizSet[index];
+  updateScore();
+  qEl.textContent = `Q${index + 1}: ${q.question}`;
+
+  optsEl.innerHTML = '';
+  selectedOption = null;
+
+  q.options.forEach(opt => {
+    const div = document.createElement('div');
+    div.className = 'option';
+    div.textContent = opt.text;   // t
