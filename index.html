@@ -20,20 +20,33 @@
       display: block;
       margin-bottom: 10px;
     }
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
+    .check-button {
+      padding: 5px 10px;
+      margin-top: 10px;
       cursor: pointer;
+    }
+    .submit-all-button {
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
     }
     #results {
       margin-top: 20px;
       font-weight: bold;
     }
-    .correct {
+    .correct-answer {
       color: green;
+      font-weight: bold;
     }
-    .incorrect {
+    .incorrect-answer {
       color: red;
+      font-weight: bold;
+    }
+    .correct-feedback {
+      background-color: #d4edda; /* Light green */
+    }
+    .incorrect-feedback {
+      background-color: #f8d7da; /* Light red */
     }
   </style>
 </head>
@@ -43,21 +56,23 @@
 
   <div id="quiz-container"></div>
 
-  <button id="submit-button">Submit Answers</button>
+  <button id="submit-all-button" class="submit-all-button">Submit All Answers</button>
 
   <div id="results"></div>
 
   <script>
     const quizContainer = document.getElementById('quiz-container');
-    const submitButton = document.getElementById('submit-button');
+    const submitAllButton = document.getElementById('submit-all-button');
     const resultsContainer = document.getElementById('results');
+
+    let questions = [];
 
     async function loadQuiz() {
       try {
         const response = await fetch('questions.csv');
         const text = await response.text();
         const lines = text.split('\n').filter(line => line.trim() !== '');
-        const questions = lines.slice(1).map(line => {
+        questions = lines.slice(1).map(line => {
           const [question, optionA, optionB, optionC, optionD, correctAnswer] = line.split(',');
           return {
             question: question.replace(/"/g, ''),
@@ -66,18 +81,19 @@
           };
         });
 
-        displayQuestions(questions);
-        submitButton.addEventListener('click', () => showResults(questions));
+        displayQuestions();
+        submitAllButton.addEventListener('click', showTotalResults);
 
       } catch (error) {
         resultsContainer.innerHTML = 'Error loading the quiz: ' + error;
       }
     }
 
-    function displayQuestions(questions) {
+    function displayQuestions() {
       questions.forEach((q, index) => {
         const questionElement = document.createElement('div');
         questionElement.classList.add('question-container');
+        questionElement.dataset.questionIndex = index;
         questionElement.innerHTML = `
           <p><b>${q.question}</b></p>
           <div class="options">
@@ -88,51 +104,61 @@
               </label>
             `).join('')}
           </div>
+          <button class="check-button" onclick="checkSingleAnswer(${index})">Check Answer</button>
+          <div class="feedback-message" id="feedback-message-${index}"></div>
         `;
         quizContainer.appendChild(questionElement);
       });
     }
+    
+    function checkSingleAnswer(questionIndex) {
+      const question = questions[questionIndex];
+      const selectedOption = document.querySelector(`input[name="question${questionIndex}"]:checked`);
+      const feedbackMessage = document.getElementById(`feedback-message-${questionIndex}`);
+      const questionContainer = document.querySelector(`.question-container[data-question-index="${questionIndex}"]`);
 
-    function showResults(questions) {
+      if (!selectedOption) {
+        feedbackMessage.innerHTML = 'Please select an answer.';
+        feedbackMessage.className = 'feedback-message incorrect-answer';
+        return;
+      }
+      
+      const isCorrect = (selectedOption.value.trim() === question.correctAnswer.trim());
+      
+      // Clear previous feedback classes
+      questionContainer.classList.remove('correct-feedback', 'incorrect-feedback');
+      
+      if (isCorrect) {
+        feedbackMessage.innerHTML = 'Correct!';
+        feedbackMessage.className = 'feedback-message correct-answer';
+        questionContainer.classList.add('correct-feedback');
+      } else {
+        feedbackMessage.innerHTML = 'Incorrect. The correct answer is: ' + question.correctAnswer;
+        feedbackMessage.className = 'feedback-message incorrect-answer';
+        questionContainer.classList.add('incorrect-feedback');
+      }
+      
+      // Disable options and check button after checking
+      document.querySelectorAll(`input[name="question${questionIndex}"]`).forEach(input => {
+          input.disabled = true;
+      });
+      document.querySelector(`.question-container[data-question-index="${questionIndex}"] .check-button`).disabled = true;
+    }
+
+    function showTotalResults() {
       let score = 0;
       let incorrectAnswers = [];
 
       questions.forEach((q, index) => {
         const selectedOption = document.querySelector(`input[name="question${index}"]:checked`);
-        const questionContainer = document.querySelector(`.question-container:nth-of-type(${index + 1})`);
+        const questionContainer = document.querySelector(`.question-container[data-question-index="${index}"]`);
         
-        if (selectedOption) {
-          if (selectedOption.value.trim() === q.correctAnswer.trim()) {
-            score++;
-            questionContainer.style.backgroundColor = '#d4edda'; // Light green for correct
-          } else {
-            incorrectAnswers.push({
-              question: q.question,
-              yourAnswer: selectedOption.value,
-              correctAnswer: q.correctAnswer
-            });
-            questionContainer.style.backgroundColor = '#f8d7da'; // Light red for incorrect
-          }
-        } else {
-          // If no option is selected, treat it as incorrect
-          incorrectAnswers.push({
-            question: q.question,
-            yourAnswer: 'Not answered',
-            correctAnswer: q.correctAnswer
-          });
-          questionContainer.style.backgroundColor = '#f8d7da'; // Light red for not answered
+        if (selectedOption && selectedOption.value.trim() === q.correctAnswer.trim()) {
+          score++;
         }
       });
-
-      let resultsHTML = `<h2>Your Score: ${score} out of ${questions.length}</h2>`;
-      if (incorrectAnswers.length > 0) {
-        resultsHTML += '<h3>Incorrect Answers:</h3><ul>';
-        incorrectAnswers.forEach(item => {
-          resultsHTML += `<li><b>${item.question}</b><br>Your Answer: <span class="incorrect">${item.yourAnswer}</span><br>Correct Answer: <span class="correct">${item.correctAnswer}</span></li>`;
-        });
-        resultsHTML += '</ul>';
-      }
-      resultsContainer.innerHTML = resultsHTML;
+      
+      resultsContainer.innerHTML = `<h2>Your Total Score: ${score} out of ${questions.length}</h2>`;
     }
 
     loadQuiz();
