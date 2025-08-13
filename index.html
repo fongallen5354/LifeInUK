@@ -6,7 +6,7 @@
 <style>
   body { font-family: Arial, sans-serif; max-width: 720px; margin: 32px auto; padding: 0 16px; }
   #score { font-weight: bold; margin-bottom: 12px; }
-  #question { margin: 6px 0 12px; }
+  #question { margin: 6px 0 12px; white-space: pre-wrap; }
   .option { padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; margin: 8px 0; cursor: pointer; white-space: pre-wrap; }
   .option:hover { border-color: #999; }
   .correct { background-color: #c8e6c9; }
@@ -27,60 +27,32 @@
   <button id="tryAgainBtn" class="hidden">Try Again</button>
 
 <script>
-/* ---- Robust CSV parser (handles quotes, commas, CRLF) ---- */
 function parseCSV(text) {
   const rows = [];
   let row = [], cur = '', inQuotes = false;
-
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
-
     if (inQuotes) {
       if (c === '"') {
-        if (text[i + 1] === '"') { // escaped quote
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        cur += c;
-      }
+        if (text[i + 1] === '"') { cur += '"'; i++; }
+        else { inQuotes = false; }
+      } else { cur += c; }
     } else {
-      if (c === '"') {
-        inQuotes = true;
-      } else if (c === ',') {
-        row.push(cur);
-        cur = '';
-      } else if (c === '\n') {
-        row.push(cur);
-        rows.push(row);
-        row = [];
-        cur = '';
-      } else if (c === '\r') {
-        // ignore CR (handle CRLF)
-      } else {
-        cur += c;
-      }
+      if (c === '"') { inQuotes = true; }
+      else if (c === ',') { row.push(cur); cur = ''; }
+      else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+      else if (c !== '\r') { cur += c; }
     }
   }
-  // last cell / last row
-  if (cur.length > 0 || row.length > 0) {
-    row.push(cur);
-    rows.push(row);
-  }
+  if (cur.length > 0 || row.length > 0) { row.push(cur); rows.push(row); }
   return rows;
 }
 
-/* ---- Load and normalize CSV according to headers ---- */
 async function loadCSV(url) {
   const res = await fetch(url);
   const text = await res.text();
-
-  // Remove BOM if present
   const clean = text.replace(/^\uFEFF/, '').trim();
   const raw = parseCSV(clean);
-
   if (raw.length === 0) return [];
 
   const header = raw.shift().map(h => h.trim().toLowerCase());
@@ -97,8 +69,6 @@ async function loadCSV(url) {
   for (const r of raw) {
     const q = (r[idx.question] || '').trim();
     if (!q) continue;
-
-    // Collect wrong options (support A–D; any missing ones are skipped)
     const wrongs = [];
     ['a','b','c','d'].forEach(k => {
       const pos = idx[k];
@@ -106,16 +76,13 @@ async function loadCSV(url) {
         wrongs.push(String(r[pos]).trim());
       }
     });
-
     const correct = idx.correct !== -1 ? String(r[idx.correct] || '').trim() : '';
     if (!correct) continue;
-
     data.push({ question: q, wrong: wrongs, correct });
   }
   return data;
 }
 
-/* ---- Fisher–Yates shuffle ---- */
 function shuffle(arr) {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -125,7 +92,6 @@ function shuffle(arr) {
   return a;
 }
 
-/* ---- Quiz state ---- */
 let quizSet = [];
 let currentQ = 0;
 let selectedOption = null;
@@ -148,11 +114,78 @@ function renderQuestion(index) {
   const q = quizSet[index];
   updateScore();
   qEl.textContent = `Q${index + 1}: ${q.question}`;
-
   optsEl.innerHTML = '';
   selectedOption = null;
-
   q.options.forEach(opt => {
     const div = document.createElement('div');
     div.className = 'option';
-    div.textContent = opt.text;   // t
+    div.textContent = opt.text;
+    div.addEventListener('click', () => {
+      document.querySelectorAll('.option').forEach(o => o.style.borderColor = '#ccc');
+      div.style.borderColor = '#000';
+      selectedOption = opt;
+    });
+    optsEl.appendChild(div);
+  });
+}
+
+function checkAnswer() {
+  if (!selectedOption) return;
+  document.querySelectorAll('.option').forEach(o => o.classList.remove('correct', 'wrong'));
+  document.querySelectorAll('.option').forEach(o => {
+    if (o.textContent === quizSet[currentQ].correct) o.classList.add('correct');
+    else if (o.textContent === selectedOption.text && o.textContent !== quizSet[currentQ].correct) o.classList.add('wrong');
+  });
+  if (selectedOption.text === quizSet[currentQ].correct) score++;
+  currentQ++;
+  total++;
+  updateScore();
+  checkBtn.classList.add('hidden');
+  nextBtn.classList.remove('hidden');
+}
+
+function nextQuestion() {
+  if (currentQ >= quizSet.length) {
+    showResult();
+  } else {
+    renderQuestion(currentQ);
+    checkBtn.classList.remove('hidden');
+    nextBtn.classList.add('hidden');
+  }
+}
+
+function showResult() {
+  qEl.textContent = '';
+  optsEl.innerHTML = '';
+  checkBtn.classList.add('hidden');
+  nextBtn.classList.add('hidden');
+  resultEl.classList.remove('hidden');
+  againBtn.classList.remove('hidden');
+  resultEl.textContent = `Final Score: ${score}/${quizSet.length}`;
+}
+
+function tryAgain() {
+  score = 0;
+  total = 0;
+  currentQ = 0;
+  resultEl.classList.add('hidden');
+  againBtn.classList.add('hidden');
+  renderQuestion(currentQ);
+  checkBtn.classList.remove('hidden');
+}
+
+checkBtn.addEventListener('click', checkAnswer);
+nextBtn.addEventListener('click', nextQuestion);
+againBtn.addEventListener('click', tryAgain);
+
+(async () => {
+  const data = await loadCSV('questions.csv'); // CSV must be in same folder
+  quizSet = shuffle(data.map(q => {
+    const options = shuffle([...q.wrong, q.correct]).map(t => ({ text: t }));
+    return { ...q, options };
+  }));
+  renderQuestion(currentQ);
+})();
+</script>
+</body>
+</html>
